@@ -48,19 +48,22 @@ def fetch_json(url: str):
 # 🟡 Ons (güncel)
 def get_ounce_gold_usd():
     data = fetch_json("https://api.gold-api.com/price/XAU")
-    price = data.get("price")
 
+    price = data.get("price")
     if price is None:
         raise ValueError(f"Ons verisi alinamadi: {data}")
 
     return float(price)
 
 
-# 💵 Kur (güncele yakın)
+# 💵 Kur (anahtarsız, stabil)
 def get_usd_try():
-    data = fetch_json("https://api.exchangerate.host/convert?from=USD&to=TRY")
+    data = fetch_json("https://open.er-api.com/v6/latest/USD")
 
-    rate = data.get("result")
+    if data.get("result") != "success":
+        raise ValueError(f"Kur API hatasi: {data}")
+
+    rate = data.get("rates", {}).get("TRY")
     if rate is None:
         raise ValueError(f"TRY kuru alinamadi: {data}")
 
@@ -141,7 +144,7 @@ async def post_init(app):
 
 
 def main():
-    print("BOT BASLADI - EXCHANGERATE SURUMU")
+    print("BOT BASLADI - STABIL SURUM")
 
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
