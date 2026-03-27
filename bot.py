@@ -5,7 +5,8 @@ from urllib.error import URLError, HTTPError
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TOKEN = "8325547416:AAGoGz86LOHqpgYBnZJoAXl4unzUB4XOOsg"
+import os
+TOKEN = os.getenv("TOKEN")
 
 
 def get_ounce_gold_usd():
