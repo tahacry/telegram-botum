@@ -11,9 +11,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
-CURRENCY_API_KEY = os.getenv("CURRENCY_API_KEY")
 
-CACHE_SECONDS = 900
+CACHE_SECONDS = 240
 USER_COOLDOWN_SECONDS = 5
 
 price_cache = {
@@ -53,13 +52,7 @@ def get_ounce_gold_usd():
 
 
 def get_usd_try():
-    if not CURRENCY_API_KEY:
-        raise ValueError("CURRENCY_API_KEY tanimli degil")
-
-    url = (
-        "https://api.freecurrencyapi.com/v1/latest"
-        f"?apikey={CURRENCY_API_KEY}&base_currency=USD&currencies=TRY"
-    )
+    url = "https://api.frankfurter.app/latest?from=USD&to=TRY"
 
     try:
         with urlopen(url, timeout=15) as response:
@@ -70,7 +63,7 @@ def get_usd_try():
     except URLError as e:
         raise ValueError(f"Kur API baglanti hatasi: {e}")
 
-    try_price = data.get("data", {}).get("TRY")
+    try_price = data.get("rates", {}).get("TRY")
     if try_price is None:
         raise ValueError(f"TRY kuru alinamadi: {data}")
 
@@ -137,7 +130,7 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🟡 Ons: {ounce_usd:,.2f} USD\n"
             f"💵 Kur: {usd_try:,.4f}\n"
             f"📊 Gram: {gram_tl:,.2f} TL\n\n"
-            "ℹ️ Veriler güncele en yakın şekilde sunulur ve en fazla 15 dakika gecikmeli olabilir."
+            "ℹ️ Veriler güncele en yakın şekilde sunulur ve en fazla 4 dakika gecikmeli olabilir."
         )
 
         await update.message.reply_text(message)
