@@ -1,6 +1,8 @@
 import os
 import json
 import time
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
 
@@ -8,11 +10,12 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
+PORT = int(os.getenv("PORT", "8080"))
 
 processed_updates = set()
 
-CACHE_SECONDS = 13
-USER_COOLDOWN_SECONDS = 13
+CACHE_SECONDS = 10
+USER_COOLDOWN_SECONDS = 10
 
 price_cache = {
     "ounce_usd": None,
@@ -20,6 +23,23 @@ price_cache = {
     "gram_tl": None,
     "last_update": 0
 }
+
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        return
+
+
+def run_web_server():
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    print(f"WEB SERVER BASLADI: {PORT}")
+    server.serve_forever()
 
 
 def get_ounce_gold_usd():
@@ -143,4 +163,8 @@ app.add_handler(CommandHandler("altin", altin))
 
 if __name__ == "__main__":
     print("BOT BASLADI")
+
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+
     app.run_polling(drop_pending_updates=True)
