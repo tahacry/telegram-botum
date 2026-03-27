@@ -12,7 +12,7 @@ TOKEN = os.getenv("TOKEN")
 processed_updates = set()
 
 CACHE_SECONDS = 13
-USER_COOLDOWN_SECONDS = 10
+USER_COOLDOWN_SECONDS = 13
 
 price_cache = {
     "ounce_usd": None,
