@@ -3,7 +3,6 @@ import json
 import time
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlencode
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
 
@@ -12,9 +11,9 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
-TWELVE_API_KEY = os.getenv("TWELVE_API_KEY")
+CURRENCY_API_KEY = os.getenv("CURRENCY_API_KEY")
 
-CACHE_SECONDS = 240
+CACHE_SECONDS = 900
 USER_COOLDOWN_SECONDS = 5
 
 price_cache = {
@@ -37,44 +36,29 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def run_web_server():
     server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-    print(f"WEB SERVER BASLADI: {PORT}")
     server.serve_forever()
 
 
-def fetch_twelve_price(symbol: str) -> float:
-    if not TWELVE_API_KEY:
-        raise ValueError("TWELVE_API_KEY tanimli degil")
-
-    params = urlencode({
-        "symbol": symbol,
-        "apikey": TWELVE_API_KEY
-    })
-    url = f"https://api.twelvedata.com/price?{params}"
-
-    try:
-        with urlopen(url, timeout=15) as response:
-            raw = response.read().decode("utf-8")
-            data = json.loads(raw)
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="ignore")
-        raise ValueError(f"{symbol} HTTP {e.code}: {body}")
-    except URLError as e:
-        raise ValueError(f"{symbol} baglanti hatasi: {e}")
-
-    print(f"{symbol} API CEVABI: {data}")
-
-    if "price" not in data:
-        raise ValueError(f"{symbol} verisi alinamadi: {data}")
+# 🟡 Ons (Gold API)
+def get_ounce_gold_usd():
+    url = "https://api.gold-api.com/price/XAU"
+    with urlopen(url, timeout=15) as response:
+        data = json.loads(response.read().decode("utf-8"))
 
     return float(data["price"])
 
 
-def get_ounce_gold_usd():
-    return fetch_twelve_price("XAU/USD")
-
-
+# 💵 Kur (FreeCurrencyAPI)
 def get_usd_try():
-    return fetch_twelve_price("USD/TRY")
+    if not CURRENCY_API_KEY:
+        raise ValueError("CURRENCY_API_KEY tanimli degil")
+
+    url = f"https://api.freecurrencyapi.com/v1/latest?apikey={CURRENCY_API_KEY}&base_currency=USD"
+
+    with urlopen(url, timeout=15) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    return float(data["data"]["TRY"])
 
 
 def calculate_gram_gold_tl(ounce_usd, usd_try):
@@ -137,7 +121,7 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🟡 Ons: {ounce_usd:,.2f} USD\n"
             f"💵 Kur: {usd_try:,.4f}\n"
             f"📊 Gram: {gram_tl:,.2f} TL\n\n"
-            "ℹ️ Veriler en fazla 4 dakika gecikmeli olabilir."
+            "ℹ️ Veriler güncele en yakın şekilde sunulur ve en fazla 15 dakika gecikmeli olabilir."
         )
 
         await update.message.reply_text(message)
@@ -151,8 +135,6 @@ async def post_init(app):
 
 
 def main():
-    print("BOT BASLADI")
-
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
