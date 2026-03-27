@@ -49,11 +49,17 @@ def fetch_twelve_price(symbol: str) -> float:
         "symbol": symbol,
         "apikey": TWELVE_API_KEY
     })
-
     url = f"https://api.twelvedata.com/price?{params}"
 
-    with urlopen(url, timeout=15) as response:
-        data = json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(url, timeout=15) as response:
+            raw = response.read().decode("utf-8")
+            data = json.loads(raw)
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        raise ValueError(f"{symbol} HTTP {e.code}: {body}")
+    except URLError as e:
+        raise ValueError(f"{symbol} baglanti hatasi: {e}")
 
     print(f"{symbol} API CEVABI: {data}")
 
@@ -135,9 +141,6 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text(message)
-
-    except (HTTPError, URLError) as e:
-        await update.message.reply_text(f"Ag hatasi: {e}")
 
     except Exception as e:
         await update.message.reply_text(f"Hata: {e}")
