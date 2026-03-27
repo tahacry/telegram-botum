@@ -12,8 +12,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
 
-CACHE_SECONDS = 30
-USER_COOLDOWN_SECONDS = 7
+CACHE_SECONDS = 240
+USER_COOLDOWN_SECONDS = 5
 
 price_cache = {
     "ounce_usd": None,
@@ -40,43 +40,31 @@ def run_web_server():
 
 
 def fetch_json(url: str):
-    req = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        },
-    )
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(req, timeout=15) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
+# 🟡 Ons (güncel)
 def get_ounce_gold_usd():
-    url = "https://api.gold-api.com/price/XAU"
-    data = fetch_json(url)
-
+    data = fetch_json("https://api.gold-api.com/price/XAU")
     price = data.get("price")
+
     if price is None:
         raise ValueError(f"Ons verisi alinamadi: {data}")
 
     return float(price)
 
 
+# 💵 Kur (güncele yakın)
 def get_usd_try():
-    url = "https://api.frankfurter.dev/v1/latest?base=USD&symbols=TRY"
+    data = fetch_json("https://api.exchangerate.host/convert?from=USD&to=TRY")
 
-    try:
-        data = fetch_json(url)
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="ignore")
-        raise ValueError(f"Kur API HTTP {e.code}: {body}")
-    except URLError as e:
-        raise ValueError(f"Kur API baglanti hatasi: {e}")
-
-    try_price = data.get("rates", {}).get("TRY")
-    if try_price is None:
+    rate = data.get("result")
+    if rate is None:
         raise ValueError(f"TRY kuru alinamadi: {data}")
 
-    return float(try_price)
+    return float(rate)
 
 
 def calculate_gram_gold_tl(ounce_usd, usd_try):
@@ -125,7 +113,7 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if now - last_request_time < USER_COOLDOWN_SECONDS:
         remaining = int(USER_COOLDOWN_SECONDS - (now - last_request_time)) + 1
         await update.message.reply_text(
-            f"Upss yavaş dostum. {remaining} saniye bekle."
+            f"Cok hizli istek gonderiyorsun. Lutfen {remaining} saniye bekle."
         )
         return
 
@@ -139,7 +127,7 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🟡 Ons: {ounce_usd:,.2f} USD\n"
             f"💵 Kur: {usd_try:,.4f}\n"
             f"📊 Gram: {gram_tl:,.2f} TL\n\n"
-            "ℹ️ Veriler güncele en yakın değerleri verir."
+            "ℹ️ Veriler en fazla 4 dakika gecikmeli olabilir."
         )
 
         await update.message.reply_text(message)
@@ -153,7 +141,7 @@ async def post_init(app):
 
 
 def main():
-    print("BOT BASLADI - FRANKFURTER DEV SURUMU")
+    print("BOT BASLADI - EXCHANGERATE SURUMU")
 
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
