@@ -4,13 +4,14 @@ import time
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
+
+FOOTER_TEXT = os.getenv("FOOTER_TEXT", "")
 
 CACHE_SECONDS = 120
 USER_COOLDOWN_SECONDS = 6
@@ -47,74 +48,52 @@ def fetch_json(url: str):
         return json.loads(response.read().decode("utf-8"))
 
 
+# 🟡 Ons
 def get_ounce_gold_usd():
     data = fetch_json("https://api.gold-api.com/price/XAU")
-    price = data.get("price")
-
-    if price is None:
-        raise ValueError(f"Ons verisi alinamadi: {data}")
-
-    return float(price)
+    return float(data["price"])
 
 
+# 💵 Kur kaynak 1
 def get_usd_try_from_erapi():
     data = fetch_json("https://open.er-api.com/v6/latest/USD")
-
-    if data.get("result") != "success":
-        raise ValueError(f"ER API hatasi: {data}")
-
-    rate = data.get("rates", {}).get("TRY")
-    if rate is None:
-        raise ValueError(f"ER API TRY kuru alinamadi: {data}")
-
-    return float(rate)
+    return float(data["rates"]["TRY"])
 
 
+# 💵 Kur kaynak 2
 def get_usd_try_from_frankfurter():
     data = fetch_json("https://api.frankfurter.dev/v2/rate/USD/TRY")
-
-    rate = data.get("rate")
-    if rate is None:
-        raise ValueError(f"Frankfurter TRY kuru alinamadi: {data}")
-
-    return float(rate)
+    return float(data["rate"])
 
 
-def is_rate_reasonable(rate: float) -> bool:
-    return 10.0 < rate < 100.0
+def is_rate_reasonable(rate: float):
+    return 10 < rate < 100
 
 
-def choose_best_rate(rates: list[float]) -> float:
+def choose_best_rate(rates):
     global last_good_usd_try
 
-    valid_rates = [r for r in rates if is_rate_reasonable(r)]
-    if not valid_rates:
-        if last_good_usd_try is not None:
+    valid = [r for r in rates if is_rate_reasonable(r)]
+
+    if not valid:
+        if last_good_usd_try:
             return last_good_usd_try
-        raise ValueError("Gecerli kur verisi bulunamadi")
+        raise ValueError("Kur bulunamadi")
 
-    if len(valid_rates) == 1:
-        chosen = valid_rates[0]
-        last_good_usd_try = chosen
-        return chosen
+    if len(valid) == 1:
+        last_good_usd_try = valid[0]
+        return valid[0]
 
-    r1, r2 = valid_rates[0], valid_rates[1]
-    diff_ratio = abs(r1 - r2) / ((r1 + r2) / 2)
+    r1, r2 = valid[0], valid[1]
+    diff = abs(r1 - r2) / ((r1 + r2) / 2)
 
-    # Fark %1'den küçükse ortalama al
-    if diff_ratio < 0.01:
+    if diff < 0.01:
         chosen = (r1 + r2) / 2
-        last_good_usd_try = chosen
-        return chosen
+    elif last_good_usd_try:
+        chosen = min(valid, key=lambda r: abs(r - last_good_usd_try))
+    else:
+        chosen = sorted(valid)[1]
 
-    # Son iyi veriye yakın olanı seç
-    if last_good_usd_try is not None:
-        chosen = min(valid_rates, key=lambda r: abs(r - last_good_usd_try))
-        last_good_usd_try = chosen
-        return chosen
-
-    # Son iyi veri yoksa ortanca mantığı
-    chosen = sorted(valid_rates)[len(valid_rates) // 2]
     last_good_usd_try = chosen
     return chosen
 
@@ -125,12 +104,12 @@ def get_usd_try():
     try:
         rates.append(get_usd_try_from_erapi())
     except Exception as e:
-        print(f"ER API HATASI: {e}")
+        print("ER API hata:", e)
 
     try:
         rates.append(get_usd_try_from_frankfurter())
     except Exception as e:
-        print(f"FRANKFURTER HATASI: {e}")
+        print("Frankfurter hata:", e)
 
     return choose_best_rate(rates)
 
@@ -139,13 +118,20 @@ def calculate_gram_gold_tl(ounce_usd, usd_try):
     return (ounce_usd * usd_try) / 31.1034768
 
 
+def calculate_other_gold_prices(gram):
+    return {
+        "ceyrek": gram * 1.754,
+        "yarim": gram * 3.508,
+        "tam": gram * 7.016,
+        "ayar22": gram * (22 / 24),
+    }
+
+
 def get_cached_prices():
     now = time.time()
 
     if (
-        price_cache["ounce_usd"] is not None
-        and price_cache["usd_try"] is not None
-        and price_cache["gram_tl"] is not None
+        price_cache["gram_tl"] is not None
         and now - price_cache["last_update"] < CACHE_SECONDS
     ):
         return (
@@ -154,47 +140,52 @@ def get_cached_prices():
             price_cache["gram_tl"],
         )
 
-    ounce_usd = get_ounce_gold_usd()
+    ounce = get_ounce_gold_usd()
     usd_try = get_usd_try()
-    gram_tl = calculate_gram_gold_tl(ounce_usd, usd_try)
+    gram = calculate_gram_gold_tl(ounce, usd_try)
 
-    price_cache["ounce_usd"] = ounce_usd
-    price_cache["usd_try"] = usd_try
-    price_cache["gram_tl"] = gram_tl
-    price_cache["last_update"] = now
+    price_cache.update({
+        "ounce_usd": ounce,
+        "usd_try": usd_try,
+        "gram_tl": gram,
+        "last_update": now
+    })
 
-    return ounce_usd, usd_try, gram_tl
+    return ounce, usd_try, gram
 
 
+# 🔥 START KOMUTU (senin istediğin gibi)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Bot hazir.\n\n"
-        "Komutlar:\n"
-        "/altin -> Gram Altın TL anlık"
+        "Aşağıdaki komutlardan birini giriniz ya da tıklayınız:\n\n"
+        "/altin"
     )
 
 
 async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = time.time()
-    last_request_time = context.user_data.get("last_request_time", 0)
+    last = context.user_data.get("last", 0)
 
-    if now - last_request_time < USER_COOLDOWN_SECONDS:
-        remaining = int(USER_COOLDOWN_SECONDS - (now - last_request_time)) + 1
-        await update.message.reply_text(
-            f"Çok fazla istek gönderdiniz. Lutfen {remaining} saniye bekleyiniz."
-        )
+    if now - last < USER_COOLDOWN_SECONDS:
+        await update.message.reply_text("Lütfen biraz bekle.")
         return
 
-    context.user_data["last_request_time"] = now
+    context.user_data["last"] = now
 
     try:
-        ounce_usd, usd_try, gram_tl = get_cached_prices()
+        ounce, usd, gram = get_cached_prices()
+        extra = calculate_other_gold_prices(gram)
 
         message = (
-            "💰 Dolar Bazinda Altin Hesaplama\n\n"
-            f"🟡 Ons: {ounce_usd:,.2f} USD\n"
-            f"💵 Kur: {usd_try:,.4f}\n"
-            f"📊 Gram: {gram_tl:,.2f} TL"
+            "💰 Altin Hesaplama\n\n"
+            f"🟡 Ons: {ounce:,.2f} USD\n"
+            f"💵 Kur: {usd:,.4f}\n\n"
+            f"📊 Gram Altin: {gram:,.2f} TL\n"
+            f"🪙 Ceyrek Altin: {extra['ceyrek']:,.2f} TL\n"
+            f"🪙 Yarim Altin: {extra['yarim']:,.2f} TL\n"
+            f"🪙 Tam Altin: {extra['tam']:,.2f} TL\n"
+            f"🟠 22 Ayar Gram: {extra['ayar22']:,.2f} TL\n\n"
+            + (FOOTER_TEXT if FOOTER_TEXT else "")
         )
 
         await update.message.reply_text(message)
@@ -208,10 +199,9 @@ async def post_init(app):
 
 
 def main():
-    print("BOT BASLADI - MIX SURUM")
+    print("BOT BASLADI - FINAL")
 
-    web_thread = threading.Thread(target=run_web_server, daemon=True)
-    web_thread.start()
+    threading.Thread(target=run_web_server, daemon=True).start()
 
     app = (
         ApplicationBuilder()
