@@ -12,8 +12,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
 
-CACHE_SECONDS = 240
-USER_COOLDOWN_SECONDS = 5
+CACHE_SECONDS = 30
+USER_COOLDOWN_SECONDS = 6
 
 price_cache = {
     "ounce_usd": None,
@@ -170,7 +170,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Bot hazir.\n\n"
         "Komutlar:\n"
-        "/altin -> gram altin TL hesaplar"
+        "/altin -> Gram Altın TL anlık"
     )
 
 
@@ -181,7 +181,7 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if now - last_request_time < USER_COOLDOWN_SECONDS:
         remaining = int(USER_COOLDOWN_SECONDS - (now - last_request_time)) + 1
         await update.message.reply_text(
-            f"Cok hizli istek gonderiyorsun. Lutfen {remaining} saniye bekle."
+            f"Çok fazla istek gönderdiniz. Lutfen {remaining} saniye bekleyiniz."
         )
         return
 
