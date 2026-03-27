@@ -12,7 +12,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
 
-CACHE_SECONDS = 240
+CACHE_SECONDS = 60
 USER_COOLDOWN_SECONDS = 5
 
 price_cache = {
