@@ -3,6 +3,7 @@ import json
 import time
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlencode
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
 
@@ -11,11 +12,12 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
+TWELVE_API_KEY = os.getenv("TWELVE_API_KEY")
+
+CACHE_SECONDS = 240
+USER_COOLDOWN_SECONDS = 5
 
 processed_updates = set()
-
-CACHE_SECONDS = 10
-USER_COOLDOWN_SECONDS = 10
 
 price_cache = {
     "ounce_usd": None,
@@ -42,31 +44,28 @@ def run_web_server():
     server.serve_forever()
 
 
-def get_ounce_gold_usd():
-    url = "https://api.gold-api.com/price/XAU"
+def fetch_twelve_price(symbol: str) -> float:
+    params = urlencode({
+        "symbol": symbol,
+        "apikey": TWELVE_API_KEY
+    })
+    url = f"https://api.twelvedata.com/price?{params}"
+
     with urlopen(url, timeout=15) as response:
         data = json.loads(response.read().decode("utf-8"))
 
-    price = data.get("price")
-    if price is None:
-        raise ValueError("Ons altın verisi alınamadı.")
+    if "price" not in data:
+        raise ValueError(f"{symbol} verisi alınamadı: {data}")
 
-    return float(price)
+    return float(data["price"])
+
+
+def get_ounce_gold_usd():
+    return fetch_twelve_price("XAU/USD")
 
 
 def get_usd_try():
-    url = "https://open.er-api.com/v6/latest/USD"
-    with urlopen(url, timeout=15) as response:
-        data = json.loads(response.read().decode("utf-8"))
-
-    if data.get("result") != "success":
-        raise ValueError("Kur verisi alınamadı.")
-
-    usd_try = data["rates"].get("TRY")
-    if usd_try is None:
-        raise ValueError("TRY kuru bulunamadı.")
-
-    return float(usd_try)
+    return fetch_twelve_price("USD/TRY")
 
 
 def calculate_gram_gold_tl(ounce_usd, usd_try):
@@ -132,7 +131,8 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💰 Dolar Bazında Altın Hesaplama\n\n"
             f"🟡 Ons: {ounce_usd:,.2f} USD\n"
             f"💵 Kur: {usd_try:,.4f}\n"
-            f"📊 Gram: {gram_tl:,.2f} TL"
+            f"📊 Gram: {gram_tl:,.2f} TL\n\n"
+            "ℹ️ Veriler güncele en yakın şekilde sunulur ve en fazla 4 dakika gecikmeli olabilir."
         )
 
         await update.message.reply_text(message)
@@ -163,8 +163,6 @@ app.add_handler(CommandHandler("altin", altin))
 
 if __name__ == "__main__":
     print("BOT BASLADI")
-
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
-
     app.run_polling(drop_pending_updates=True)
