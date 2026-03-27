@@ -8,6 +8,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
 
+processed_updates = set()
+
 
 def get_ounce_gold_usd():
     url = "https://api.gold-api.com/price/XAU"
@@ -33,8 +35,7 @@ def get_usd_try():
     if usd_try is None:
         raise ValueError("TRY kuru bulunamadı.")
 
-    updated_at = data.get("time_last_update_utc", "Bilinmiyor")
-    return float(usd_try), updated_at
+    return float(usd_try)
 
 
 def calculate_gram_gold_tl(ounce_usd, usd_try):
@@ -42,21 +43,28 @@ def calculate_gram_gold_tl(ounce_usd, usd_try):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.update_id in processed_updates:
+        return
+    processed_updates.add(update.update_id)
+
     await update.message.reply_text("Bot hazır. /altin yaz.")
 
 
 async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.update_id in processed_updates:
+        return
+    processed_updates.add(update.update_id)
+
     try:
         ounce_usd = get_ounce_gold_usd()
-        usd_try, updated_at = get_usd_try()
+        usd_try = get_usd_try()
         gram_tl = calculate_gram_gold_tl(ounce_usd, usd_try)
 
         message = (
-            "Dolar Bazında Altın Hesaplama\n\n"
-            f"Ons Altın: {ounce_usd:,.2f} USD\n"
-            f"USD/TRY: {usd_try:,.4f}\n"
-            f"Gram Altın: {gram_tl:,.2f} TL\n\n"
-            f"Güncelleme: {updated_at}"
+            "💰 Dolar Bazında Altın Hesaplama\n\n"
+            f"🟡 Ons: {ounce_usd:,.2f} USD\n"
+            f"💵 Kur: {usd_try:,.4f}\n"
+            f"📊 Gram: {gram_tl:,.2f} TL"
         )
 
         await update.message.reply_text(message)
@@ -67,7 +75,16 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Hata: {e}")
 
 
-app = ApplicationBuilder().token(TOKEN).build()
+async def post_init(app):
+    await app.bot.delete_webhook(drop_pending_updates=True)
+
+
+app = (
+    ApplicationBuilder()
+    .token(TOKEN)
+    .post_init(post_init)
+    .build()
+)
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("altin", altin))
