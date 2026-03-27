@@ -11,8 +11,8 @@ TOKEN = os.getenv("TOKEN")
 
 processed_updates = set()
 
-CACHE_SECONDS = 15
-USER_COOLDOWN_SECONDS = 6
+CACHE_SECONDS = 13
+USER_COOLDOWN_SECONDS = 10
 
 price_cache = {
     "ounce_usd": None,
@@ -20,8 +20,6 @@ price_cache = {
     "gram_tl": None,
     "last_update": 0
 }
-
-user_last_request = {}
 
 
 def get_ounce_gold_usd():
@@ -82,30 +80,7 @@ def get_cached_prices():
     return ounce_usd, usd_try, gram_tl
 
 
-def is_user_on_cooldown(user_id):
-    now = time.time()
-    last_time = user_last_request.get(user_id)
-
-    if last_time is None:
-        return False, 0
-
-    passed = now - last_time
-    if passed < USER_COOLDOWN_SECONDS:
-        remaining = USER_COOLDOWN_SECONDS - passed
-        return True, int(remaining) + 1
-
-    return False, 0
-
-
-def update_user_request_time(user_id):
-    user_last_request[user_id] = time.time()
-
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.update_id in processed_updates:
-        return
-    processed_updates.add(update.update_id)
-
     await update.message.reply_text(
         "Bot hazır.\n\n"
         "Komutlar:\n"
@@ -118,20 +93,17 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     processed_updates.add(update.update_id)
 
-    user = update.effective_user
-    if user is None:
-        return
+    now = time.time()
+    last_request_time = context.user_data.get("last_request_time", 0)
 
-    user_id = user.id
-    on_cooldown, remaining = is_user_on_cooldown(user_id)
-
-    if on_cooldown:
+    if now - last_request_time < USER_COOLDOWN_SECONDS:
+        remaining = int(USER_COOLDOWN_SECONDS - (now - last_request_time)) + 1
         await update.message.reply_text(
             f"Çok hızlı istek gönderiyorsun. Lütfen {remaining} saniye bekle."
         )
         return
 
-    update_user_request_time(user_id)
+    context.user_data["last_request_time"] = now
 
     try:
         ounce_usd, usd_try, gram_tl = get_cached_prices()
