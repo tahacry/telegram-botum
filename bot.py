@@ -17,8 +17,6 @@ TWELVE_API_KEY = os.getenv("TWELVE_API_KEY")
 CACHE_SECONDS = 240
 USER_COOLDOWN_SECONDS = 5
 
-processed_updates = set()
-
 price_cache = {
     "ounce_usd": None,
     "usd_try": None,
@@ -30,7 +28,6 @@ price_cache = {
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write(b"OK")
 
@@ -45,17 +42,23 @@ def run_web_server():
 
 
 def fetch_twelve_price(symbol: str) -> float:
+    if not TWELVE_API_KEY:
+        raise ValueError("TWELVE_API_KEY tanimli degil")
+
     params = urlencode({
         "symbol": symbol,
         "apikey": TWELVE_API_KEY
     })
+
     url = f"https://api.twelvedata.com/price?{params}"
 
     with urlopen(url, timeout=15) as response:
         data = json.loads(response.read().decode("utf-8"))
 
+    print(f"{symbol} API CEVABI: {data}")
+
     if "price" not in data:
-        raise ValueError(f"{symbol} verisi alınamadı: {data}")
+        raise ValueError(f"{symbol} verisi alinamadi: {data}")
 
     return float(data["price"])
 
@@ -108,17 +111,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.update_id in processed_updates:
-        return
-    processed_updates.add(update.update_id)
-
     now = time.time()
     last_request_time = context.user_data.get("last_request_time", 0)
 
     if now - last_request_time < USER_COOLDOWN_SECONDS:
         remaining = int(USER_COOLDOWN_SECONDS - (now - last_request_time)) + 1
         await update.message.reply_text(
-            f"Çok hızlı istek gönderiyorsun. Lütfen {remaining} saniye bekle."
+            f"Cok hizli istek gonderiyorsun. Lutfen {remaining} saniye bekle."
         )
         return
 
@@ -132,37 +131,40 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🟡 Ons: {ounce_usd:,.2f} USD\n"
             f"💵 Kur: {usd_try:,.4f}\n"
             f"📊 Gram: {gram_tl:,.2f} TL\n\n"
-            "ℹ️ Veriler güncele en yakın şekilde sunulur ve en fazla 4 dakika gecikmeli olabilir."
+            "ℹ️ Veriler en fazla 4 dakika gecikmeli olabilir."
         )
 
         await update.message.reply_text(message)
 
-    except (HTTPError, URLError):
-        await update.message.reply_text(
-            "Şu anda veri alınamadı. Biraz sonra tekrar dene."
-        )
-    except Exception:
-        await update.message.reply_text(
-            "Bir hata oluştu. Biraz sonra tekrar dene."
-        )
+    except (HTTPError, URLError) as e:
+        await update.message.reply_text(f"Ag hatasi: {e}")
+
+    except Exception as e:
+        await update.message.reply_text(f"Hata: {e}")
 
 
 async def post_init(app):
     await app.bot.delete_webhook(drop_pending_updates=True)
 
 
-app = (
-    ApplicationBuilder()
-    .token(TOKEN)
-    .post_init(post_init)
-    .build()
-)
-
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("altin", altin))
-
-if __name__ == "__main__":
+def main():
     print("BOT BASLADI")
+
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
+
+    app = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .post_init(post_init)
+        .build()
+    )
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("altin", altin))
+
     app.run_polling(drop_pending_updates=True)
+
+
+if __name__ == "__main__":
+    main()
