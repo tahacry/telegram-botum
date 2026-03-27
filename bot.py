@@ -39,26 +39,42 @@ def run_web_server():
     server.serve_forever()
 
 
-# 🟡 Ons (Gold API)
 def get_ounce_gold_usd():
     url = "https://api.gold-api.com/price/XAU"
+
     with urlopen(url, timeout=15) as response:
         data = json.loads(response.read().decode("utf-8"))
 
-    return float(data["price"])
+    price = data.get("price")
+    if price is None:
+        raise ValueError(f"Ons verisi alinamadi: {data}")
+
+    return float(price)
 
 
-# 💵 Kur (FreeCurrencyAPI)
 def get_usd_try():
     if not CURRENCY_API_KEY:
         raise ValueError("CURRENCY_API_KEY tanimli degil")
 
-    url = f"https://api.freecurrencyapi.com/v1/latest?apikey={CURRENCY_API_KEY}&base_currency=USD"
+    url = (
+        "https://api.freecurrencyapi.com/v1/latest"
+        f"?apikey={CURRENCY_API_KEY}&base_currency=USD&currencies=TRY"
+    )
 
-    with urlopen(url, timeout=15) as response:
-        data = json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(url, timeout=15) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        raise ValueError(f"Kur API HTTP {e.code}: {body}")
+    except URLError as e:
+        raise ValueError(f"Kur API baglanti hatasi: {e}")
 
-    return float(data["data"]["TRY"])
+    try_price = data.get("data", {}).get("TRY")
+    if try_price is None:
+        raise ValueError(f"TRY kuru alinamadi: {data}")
+
+    return float(try_price)
 
 
 def calculate_gram_gold_tl(ounce_usd, usd_try):
