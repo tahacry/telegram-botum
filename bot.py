@@ -12,7 +12,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
 
-CACHE_SECONDS = 60
+CACHE_SECONDS = 240
 USER_COOLDOWN_SECONDS = 5
 
 price_cache = {
@@ -35,6 +35,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def run_web_server():
     server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    print("WEB SERVER BASLADI")
     server.serve_forever()
 
 
@@ -59,9 +60,11 @@ def get_usd_try():
             data = json.loads(response.read().decode("utf-8"))
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore")
-        raise ValueError(f"Kur API HTTP {e.code}: {body}")
+        raise ValueError(f"FRANKFURTER HATASI HTTP {e.code}: {body}")
     except URLError as e:
-        raise ValueError(f"Kur API baglanti hatasi: {e}")
+        raise ValueError(f"FRANKFURTER BAGLANTI HATASI: {e}")
+
+    print("FRANKFURTER CEVABI:", data)
 
     try_price = data.get("rates", {}).get("TRY")
     if try_price is None:
@@ -103,9 +106,9 @@ def get_cached_prices():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Bot hazır.\n\n"
+        "Bot hazir.\n\n"
         "Komutlar:\n"
-        "/altin -> gram altın TL hesaplar"
+        "/altin -> gram altin TL hesaplar"
     )
 
 
@@ -126,17 +129,17 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ounce_usd, usd_try, gram_tl = get_cached_prices()
 
         message = (
-            "💰 Dolar Bazında Altın Hesaplama\n\n"
-            f"🟡 Ons: {ounce_usd:,.2f} USD\n"
-            f"💵 Kur: {usd_try:,.4f}\n"
-            f"📊 Gram: {gram_tl:,.2f} TL\n\n"
-            "ℹ️ Veriler güncele en yakın şekilde sunulur ve en fazla 4 dakika gecikmeli olabilir."
+            "Dolar Bazinda Altin Hesaplama\n\n"
+            f"Ons: {ounce_usd:,.2f} USD\n"
+            f"Kur: {usd_try:,.4f}\n"
+            f"Gram: {gram_tl:,.2f} TL\n\n"
+            "Veriler en fazla 4 dakika gecikmeli olabilir."
         )
 
         await update.message.reply_text(message)
 
     except Exception as e:
-        await update.message.reply_text(f"Hata: {e}")
+        await update.message.reply_text(f"HATA DETAY: {e}")
 
 
 async def post_init(app):
@@ -144,6 +147,8 @@ async def post_init(app):
 
 
 def main():
+    print("BOT BASLADI - FRANKFURTER SURUMU")
+
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
