@@ -3,7 +3,7 @@ import json
 import time
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
 from telegram import Update
@@ -39,11 +39,20 @@ def run_web_server():
     server.serve_forever()
 
 
+def fetch_json(url: str):
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        },
+    )
+    with urlopen(req, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def get_ounce_gold_usd():
     url = "https://api.gold-api.com/price/XAU"
-
-    with urlopen(url, timeout=15) as response:
-        data = json.loads(response.read().decode("utf-8"))
+    data = fetch_json(url)
 
     price = data.get("price")
     if price is None:
@@ -53,18 +62,15 @@ def get_ounce_gold_usd():
 
 
 def get_usd_try():
-    url = "https://api.frankfurter.app/latest?from=USD&to=TRY"
+    url = "https://api.frankfurter.dev/v1/latest?base=USD&symbols=TRY"
 
     try:
-        with urlopen(url, timeout=15) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        data = fetch_json(url)
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore")
-        raise ValueError(f"FRANKFURTER HATASI HTTP {e.code}: {body}")
+        raise ValueError(f"Kur API HTTP {e.code}: {body}")
     except URLError as e:
-        raise ValueError(f"FRANKFURTER BAGLANTI HATASI: {e}")
-
-    print("FRANKFURTER CEVABI:", data)
+        raise ValueError(f"Kur API baglanti hatasi: {e}")
 
     try_price = data.get("rates", {}).get("TRY")
     if try_price is None:
@@ -119,7 +125,7 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if now - last_request_time < USER_COOLDOWN_SECONDS:
         remaining = int(USER_COOLDOWN_SECONDS - (now - last_request_time)) + 1
         await update.message.reply_text(
-            f"Cok hizli istek gonderiyorsun. Lutfen {remaining} saniye bekle."
+            f"Yavaş lann gaç tane alıyoon. {remaining} saniye bekle."
         )
         return
 
@@ -129,17 +135,17 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ounce_usd, usd_try, gram_tl = get_cached_prices()
 
         message = (
-            "Dolar Bazinda Altin Hesaplama\n\n"
-            f"Ons: {ounce_usd:,.2f} USD\n"
-            f"Kur: {usd_try:,.4f}\n"
-            f"Gram: {gram_tl:,.2f} TL\n\n"
-            "Veriler en fazla 4 dakika gecikmeli olabilir."
+            "💰 Dolar Bazinda Altin Hesaplama\n\n"
+            f"🟡 Ons: {ounce_usd:,.2f} USD\n"
+            f"💵 Kur: {usd_try:,.4f}\n"
+            f"📊 Gram: {gram_tl:,.2f} TL\n\n"
+            "ℹ️ Veriler en fazla 4 dakika gecikmeli olabilir."
         )
 
         await update.message.reply_text(message)
 
     except Exception as e:
-        await update.message.reply_text(f"HATA DETAY: {e}")
+        await update.message.reply_text(f"Hata: {e}")
 
 
 async def post_init(app):
@@ -147,7 +153,7 @@ async def post_init(app):
 
 
 def main():
-    print("BOT BASLADI - FRANKFURTER SURUMU")
+    print("BOT BASLADI - FRANKFURTER DEV SURUMU")
 
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
