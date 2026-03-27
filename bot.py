@@ -1,3 +1,4 @@
+import os
 import json
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
@@ -5,7 +6,6 @@ from urllib.error import URLError, HTTPError
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-import os
 TOKEN = os.getenv("TOKEN")
 
 
@@ -29,9 +29,7 @@ def get_usd_try():
     if data.get("result") != "success":
         raise ValueError("Kur verisi alınamadı.")
 
-    rates = data.get("rates", {})
-    usd_try = rates.get("TRY")
-
+    usd_try = data["rates"].get("TRY")
     if usd_try is None:
         raise ValueError("TRY kuru bulunamadı.")
 
@@ -44,12 +42,7 @@ def calculate_gram_gold_tl(ounce_usd, usd_try):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Hazır.\n\n"
-        "Komutlar:\n"
-        "/altin -> canlı ons + dolar kuru ile gram altın TL hesaplar\n"
-        "/hesapla -> aynı işlemi yapar"
-    )
+    await update.message.reply_text("Bot hazır. /altin yaz.")
 
 
 async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -63,25 +56,22 @@ async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Ons Altın: {ounce_usd:,.2f} USD\n"
             f"USD/TRY: {usd_try:,.4f}\n"
             f"Gram Altın: {gram_tl:,.2f} TL\n\n"
-            f"Kur Güncelleme: {updated_at}\n"
-            f"Kaynaklar: Gold API + ExchangeRate-API"
+            f"Güncelleme: {updated_at}"
         )
 
         await update.message.reply_text(message)
 
     except (HTTPError, URLError):
-        await update.message.reply_text(
-            "Veri kaynaklarına bağlanamadım. Biraz sonra tekrar dene."
-        )
+        await update.message.reply_text("Veri kaynaklarına bağlanamadım.")
     except Exception as e:
-        await update.message.reply_text(f"Hata: {str(e)}")
+        await update.message.reply_text(f"Hata: {e}")
 
 
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("altin", altin))
-app.add_handler(CommandHandler("hesapla", altin))
 
 if __name__ == "__main__":
-    app.run_polling()
+    print("BOT BASLADI")
+    app.run_polling(drop_pending_updates=True)
