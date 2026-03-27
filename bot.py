@@ -1,13 +1,86 @@
+import json
+from urllib.request import urlopen
+from urllib.error import URLError, HTTPError
+
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TOKEN = "8325547416:AAE7SsvpzDiYfyEqlzvbm9AgQJi1O1XkJ0g"
+TOKEN = "BURAYA_BOT_TOKENIN"
+
+
+def get_ounce_gold_usd():
+    url = "https://api.gold-api.com/price/XAU"
+    with urlopen(url, timeout=15) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    price = data.get("price")
+    if price is None:
+        raise ValueError("Ons altın verisi alınamadı.")
+
+    return float(price)
+
+
+def get_usd_try():
+    url = "https://open.er-api.com/v6/latest/USD"
+    with urlopen(url, timeout=15) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    if data.get("result") != "success":
+        raise ValueError("Kur verisi alınamadı.")
+
+    rates = data.get("rates", {})
+    usd_try = rates.get("TRY")
+
+    if usd_try is None:
+        raise ValueError("TRY kuru bulunamadı.")
+
+    updated_at = data.get("time_last_update_utc", "Bilinmiyor")
+    return float(usd_try), updated_at
+
+
+def calculate_gram_gold_tl(ounce_usd, usd_try):
+    return (ounce_usd * usd_try) / 31.1034768
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Merhaba, bot çalışıyor.")
+    await update.message.reply_text(
+        "Hazır.\n\n"
+        "Komutlar:\n"
+        "/altin -> canlı ons + dolar kuru ile gram altın TL hesaplar\n"
+        "/hesapla -> aynı işlemi yapar"
+    )
+
+
+async def altin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        ounce_usd = get_ounce_gold_usd()
+        usd_try, updated_at = get_usd_try()
+        gram_tl = calculate_gram_gold_tl(ounce_usd, usd_try)
+
+        message = (
+            "Dolar Bazında Altın Hesaplama\n\n"
+            f"Ons Altın: {ounce_usd:,.2f} USD\n"
+            f"USD/TRY: {usd_try:,.4f}\n"
+            f"Gram Altın: {gram_tl:,.2f} TL\n\n"
+            f"Kur Güncelleme: {updated_at}\n"
+            f"Kaynaklar: Gold API + ExchangeRate-API"
+        )
+
+        await update.message.reply_text(message)
+
+    except (HTTPError, URLError):
+        await update.message.reply_text(
+            "Veri kaynaklarına bağlanamadım. Biraz sonra tekrar dene."
+        )
+    except Exception as e:
+        await update.message.reply_text(f"Hata: {str(e)}")
+
 
 app = ApplicationBuilder().token(TOKEN).build()
+
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("altin", altin))
+app.add_handler(CommandHandler("hesapla", altin))
 
 if __name__ == "__main__":
     app.run_polling()
